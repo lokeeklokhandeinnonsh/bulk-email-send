@@ -1,9 +1,9 @@
 import axios from 'axios';
 
-const API_BASE_URL = 'https://bulk-email-send-6v2r.onrender.com/api';
+const API_URL = import.meta.env.VITE_API_URL || 'https://bulk-email-send-6v2r.onrender.com';
 
 const api = axios.create({
-  baseURL: API_BASE_URL,
+  baseURL: `${API_URL}/api`,
   headers: {
     'Content-Type': 'multipart/form-data',
   },
@@ -26,8 +26,7 @@ export const sendBulkEmails = async (file, subject, message) => {
     headers: {
       'Content-Type': 'multipart/form-data',
     },
-    // Keep connection alive for long-running requests
-    timeout: 300000, // 5 minutes
+    timeout: 300000,
   });
 
   return response.data;
