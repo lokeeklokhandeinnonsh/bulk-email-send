@@ -8,43 +8,56 @@ import path from 'path';
  */
 export const sendEmailsBatch = async (req, res) => {
   let filePath = null;
+  console.log('🚀 Starting email batch request');
+
+  // Set a safety timeout to ensure we always respond
+  const timeoutMs = 10 * 60 * 1000; // 10 minutes
+  const timeoutPromise = new Promise((_, reject) => {
+    setTimeout(() => reject(new Error('Request timeout after 10 minutes')), timeoutMs);
+  });
 
   try {
-    const file = req.file;
+    // Race the main operation against timeout
+    const result = await Promise.race([
+      (async () => {
+        const file = req.file;
 
-    // Debug: Log full file object
-    console.log('📥 Uploaded file received:', JSON.stringify(file, null, 2));
+        // Debug: Log full file object
+        console.log('📥 Uploaded file received:', {
+          originalname: file?.originalname,
+          path: file?.path,
+          size: file?.size,
+          mimetype: file?.mimetype
+        });
 
-    // Validate required fields
-    if (!file) {
-      return res.status(400).json({
-        success: false,
-        error: 'No file uploaded'
-      });
-    }
+        // Validate required fields
+        if (!file) {
+          console.log('❌ No file uploaded');
+          return { status: 400, body: { success: false, error: 'No file uploaded' } };
+        }
 
-    filePath = file.path;
-    console.log('📁 File saved at:', filePath);
+        filePath = file.path;
+        console.log('📁 File saved at:', filePath);
 
-    // Parse Excel/CSV file
-    const recipients = await readExcelFile(filePath);
+        // Parse Excel/CSV file
+        console.log('📖 Starting Excel file parsing...');
+        const recipients = await readExcelFile(filePath);
+        console.log(`✅ Parsed ${recipients.length} recipients`);
 
-    if (recipients.length === 0) {
-      // Clean up file
-      if (filePath && fs.existsSync(filePath)) {
-        fs.unlinkSync(filePath);
-      }
-      return res.status(400).json({
-        success: false,
-        error: 'No valid recipients found in the file. Ensure columns: Name, Company, Email'
-      });
-    }
+        if (recipients.length === 0) {
+          // Clean up file
+          if (filePath && fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+          }
+          console.log('❌ No valid recipients found');
+          return { status: 400, body: { success: false, error: 'No valid recipients found in the file. Ensure columns: Name, Company, Email' } };
+        }
 
-    console.log(`📊 Processing ${recipients.length} recipients`);
+        console.log(`📊 Processing ${recipients.length} recipients`);
 
-    // Fixed email templates
-    const subjectTemplate = "Focus on Growth, Not Payroll – Get Started with Free HRM ERP Today";
-    const bodyTemplate = `Dear {{name}},
+        // Fixed email templates
+        const subjectTemplate = "Focus on Growth, Not Payroll – Get Started with Free HRM ERP Today";
+        const bodyTemplate = `Dear {{name}},
 
 Greetings from Xpertance, Pune.
 
@@ -73,41 +86,48 @@ Looking forward to your response.
 Best regards,
 Your Name`;
 
-    // Send emails
-    const results = await sendEmails(recipients, subjectTemplate, bodyTemplate);
+        // Send emails
+        console.log('📤 Starting email sending process...');
+        const results = await sendEmails(recipients, subjectTemplate, bodyTemplate);
+        console.log('✅ Email sending process completed');
 
-    const sentCount = results.filter(r => r.status === 'sent').length;
-    const failedCount = results.filter(r => r.status === 'failed').length;
+        const sentCount = results.filter(r => r.status === 'sent').length;
+        const failedCount = results.filter(r => r.status === 'failed').length;
 
-    // Clean up file after response is sent
-    const cleanup = () => {
-      if (filePath && fs.existsSync(filePath)) {
-        fs.unlinkSync(filePath);
-        console.log('🗑️ File cleaned up:', filePath);
-      }
-    };
+        console.log(`📈 Results: ${sentCount} sent, ${failedCount} failed out of ${recipients.length}`);
 
-    res.on('close', cleanup);
-    res.on('finish', cleanup);
+        // Clean up file before sending response
+        if (filePath && fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+          console.log('🗑️ File cleaned up:', filePath);
+        }
 
-    return res.json({
-      success: true,
-      sent: sentCount,
-      failed: failedCount,
-      total: recipients.length,
-      logs: results
-    });
+        console.log('📤 Sending response to frontend');
+        return { status: 200, body: { success: true, sent: sentCount, failed: failedCount, total: recipients.length, logs: results } };
+      })()
+    ], timeoutPromise);
+
+    return res.status(result.status).json(result.body);
 
   } catch (error) {
     console.error('❌ Email sending error:', error);
+    console.error('Error stack:', error.stack);
 
     // Clean up file on error
     if (filePath && fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
-      console.log('🗑️ File cleaned up after error:', filePath);
+      try {
+        fs.unlinkSync(filePath);
+        console.log('🗑️ File cleaned up after error:', filePath);
+      } catch (cleanupError) {
+        console.error('❌ Failed to clean up file:', cleanupError);
+      }
     }
 
-    res.status(500).json({
+    // Determine status code
+    const statusCode = error.message.includes('timeout') ? 504 : 500;
+    console.log(`📤 Sending error response to frontend (status: ${statusCode})`);
+
+    return res.status(statusCode).json({
       success: false,
       error: error.message || 'Failed to send emails'
     });

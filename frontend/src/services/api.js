@@ -7,6 +7,7 @@ const api = axios.create({
   headers: {
     'Content-Type': 'multipart/form-data',
   },
+  timeout: 600000, // 10 minutes to match backend timeout
 });
 
 /**
@@ -17,19 +18,49 @@ const api = axios.create({
  * @returns {Promise<Object>} Response with success, sent, failed counts and logs
  */
 export const sendBulkEmails = async (file, subject, message) => {
+  console.log('📤 Preparing to send bulk emails request...');
+
   const formData = new FormData();
   formData.append('file', file);
   formData.append('subject', subject);
   formData.append('message', message);
 
-  const response = await api.post('/send-emails', formData, {
-    headers: {
-      'Content-Type': 'multipart/form-data',
-    },
-    timeout: 300000,
-  });
+  console.log('📤 Making POST request to /api/send-emails');
 
-  return response.data;
+  try {
+    const response = await api.post('/send-emails', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+
+    console.log('✅ Received response from server:', response.data);
+    return response.data;
+
+  } catch (error) {
+    console.error('❌ API request failed:', error);
+
+    // Enhanced error handling
+    if (error.code === 'ECONNABORTED') {
+      throw new Error('Request timeout: The server took too long to respond. The email process might still be running on the server.');
+    }
+
+    if (error.response) {
+      // Server responded with an error status
+      const serverError = error.response.data?.error || error.message;
+      const errorWithDetails = new Error(serverError);
+      errorWithDetails.status = error.response.status;
+      errorWithDetails.data = error.response.data;
+      throw errorWithDetails;
+    }
+
+    if (error.request) {
+      // No response received
+      throw new Error('No response from server. Please check your connection or server status.');
+    }
+
+    throw error;
+  }
 };
 
 export default api;
