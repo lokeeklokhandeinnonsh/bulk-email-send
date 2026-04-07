@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_BASE_URL = '/api';
+const API_BASE_URL = 'https://bulk-email-send-6v2r.onrender.com/api';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
