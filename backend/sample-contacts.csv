@@ -1,0 +1,7 @@
+Name,Company,Email
+Lokeek Lokhande,Acme Corporation,lokeeklokhande1185@gmail.com
+Lokeek,Tech Startups,lokeek.1185@gmail.com
+Rishi PCCOE,Innonsh Technologies,lokeek.lokhande23@pccoepune.org
+</think>
+Now let me create the project structure tree and verify everything is in place:<tool_call>
+<function=Bash>
